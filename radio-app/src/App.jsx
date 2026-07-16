@@ -24,6 +24,7 @@ function App() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [sortBy, setSortBy] = useState("popular");
   const [selectedTag, setSelectedTag] = useState("all");
+  const [selectedCountry, setSelectedCountry] = useState("all");
   const [playerError, setPlayerError] = useState("");
   const [nowPlaying, setNowPlaying] = useState("Kol kas informacija negaunama");
 
@@ -56,59 +57,77 @@ useEffect(() => {
     }
   }, [currentStation]);
 
-  useEffect(() => {
-    const loadStations = async () => {
-      try {
-        setLoading(true);
-        setError("");
+useEffect(() => {
+  const loadStations = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        const response = await fetch(
-          "https://de1.api.radio-browser.info/json/stations/bycountry/Lithuania",
-        );
+      const countryCodes = ["LT", "LV", "EE", "PL", "DE", "GB", "FR", "US", "CA", "AU"];
 
-        if (!response.ok) {
-          throw new Error("Nepavyko gauti stočių iš API");
-        }
+      const responses = await Promise.all(
+        countryCodes.map((code) =>
+          fetch(
+            `https://de1.api.radio-browser.info/json/stations/bycountrycodeexact/${code}`,
+          ).then(async (res) => {
+            if (!res.ok) {
+              throw new Error(`Nepavyko gauti stočių šaliai: ${code}`);
+            }
 
-        const data = await response.json();
+            const stations = await res.json();
 
-       const normalizedStations = data
-         .filter((station) => {
-           return (
-             station.name && station.url_resolved && station.lastcheckok === 1
-           );
-         })
-         .map((station) => ({
-           id: station.stationuuid,
-           name: station.name.trim(),
-           streamUrl: station.url_resolved,
-           homepage: station.homepage || "",
-           favicon: station.favicon || "",
-           country: station.country || "",
-           tags: station.tags || "",
-           codec: station.codec || "",
-           bitrate: station.bitrate || 0,
-           clickcount: station.clickcount || 0,
-           votes: station.votes || 0,
-           lastcheckok: station.lastcheckok,
-         }))
-         .sort((a, b) => {
-           if (b.clickcount !== a.clickcount) {
-             return b.clickcount - a.clickcount;
-           }
-           return a.name.localeCompare(b.name);
-         });
-        setStations(normalizedStations);
-      } catch (err) {
-        setError(err.message || "Įvyko klaida");
-      } finally {
-        setLoading(false);
-      }
-    };
+            return stations
+              .filter(
+                (station) =>
+                  station.name &&
+                  station.url_resolved &&
+                  station.lastcheckok === 1,
+              )
+              .sort((a, b) => (b.clickcount || 0) - (a.clickcount || 0))
+              .slice(0, 30);
+          }),
+        ),
+      );
 
-    loadStations();
-  }, []);
+      const data = responses.flat();
 
+      const normalizedStations = data
+        .map((station) => ({
+          id: station.stationuuid,
+          name: station.name.trim(),
+          streamUrl: station.url_resolved,
+          homepage: station.homepage || "",
+          favicon: station.favicon || "",
+          country: station.country || "",
+          tags: station.tags || "",
+          codec: station.codec || "",
+          bitrate: station.bitrate || 0,
+          clickcount: station.clickcount || 0,
+          votes: station.votes || 0,
+          lastcheckok: station.lastcheckok,
+        }))
+        .sort((a, b) => {
+          if (a.country !== b.country) {
+            return a.country.localeCompare(b.country);
+          }
+
+          if (b.clickcount !== a.clickcount) {
+            return b.clickcount - a.clickcount;
+          }
+
+          return a.name.localeCompare(b.name);
+        });
+
+      setStations(normalizedStations);
+    } catch (err) {
+      setError(err.message || "Įvyko klaida");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadStations();
+}, []);
 useEffect(() => {
   if (!("mediaSession" in navigator) || !currentStation) return;
 
@@ -201,6 +220,22 @@ const availableTags = useMemo(() => {
   return ["all", ...Array.from(tagsSet).sort((a, b) => a.localeCompare(b))];
 }, [stations]);
 
+
+const availableCountries = useMemo(() => {
+  const countriesSet = new Set();
+
+  stations.forEach((station) => {
+    if (!station.country) return;
+    countriesSet.add(station.country.trim());
+  });
+
+  return [
+    "all",
+    ...Array.from(countriesSet).sort((a, b) => a.localeCompare(b)),
+  ];
+}, [stations]);
+
+
 const toggleFavorite = (stationId) => {
   setFavorites((prev) => {
     if (prev.includes(stationId)) {
@@ -230,6 +265,13 @@ const filteredStations = useMemo(() => {
     );
   }
 
+  if (selectedCountry !== "all") {
+    result = result.filter(
+      (station) =>
+        station.country?.trim().toLowerCase() === selectedCountry.toLowerCase(),
+    );
+  }
+
   result = [...result].sort((a, b) => {
     if (sortBy === "name") {
       return a.name.localeCompare(b.name);
@@ -247,8 +289,15 @@ const filteredStations = useMemo(() => {
   });
 
   return result;
-}, [stations, searchTerm, showFavoritesOnly, favorites, sortBy, selectedTag]);
-
+}, [
+  stations,
+  searchTerm,
+  showFavoritesOnly,
+  favorites,
+  sortBy,
+  selectedTag,
+  selectedCountry,
+]);
 
 
 const handleSelectStation = (station) => {
@@ -322,7 +371,6 @@ const handleStop = () => {
       <div className="app-top">
         <Header />
         <SearchBar searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-
         <div className="toolbar">
           <label className="toolbar__checkbox">
             <input
@@ -338,6 +386,17 @@ const handleStop = () => {
             <option value="votes">Pagal balsus</option>
             <option value="bitrate">Pagal bitrate</option>
             <option value="name">Pagal pavadinimą</option>
+          </select>
+
+          <select
+            value={selectedCountry}
+            onChange={(e) => setSelectedCountry(e.target.value)}
+          >
+            {availableCountries.map((country) => (
+              <option key={country} value={country}>
+                {country === "all" ? "Visos šalys" : country}
+              </option>
+            ))}
           </select>
 
           <select
