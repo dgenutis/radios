@@ -3,6 +3,23 @@ import { Station } from "../types/station";
 
 const FAVORITES_KEY = "favorite_stations";
 const RECENT_KEY = "recent_stations";
+const THEME_KEY = "theme_mode";
+
+export async function saveThemeMode(theme: "system" | "light" | "dark") {
+  await AsyncStorage.setItem(THEME_KEY, theme);
+}
+
+export async function loadThemeMode(): Promise<"system" | "light" | "dark"> {
+  const data = await AsyncStorage.getItem(THEME_KEY);
+
+  if (data === "light" || data === "dark" || data === "system") {
+    return data;
+  }
+
+  return "system";
+}
+
+
 
 export async function saveFavorites(stations: Station[]) {
   await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(stations));
@@ -36,3 +53,4 @@ export function addStationToRecent(
 
   return [station, ...filtered].slice(0, 10);
 }
+

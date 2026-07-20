@@ -1,47 +1,45 @@
-import { useCallback, useState } from "react";
-import { StyleSheet, Text, View, FlatList, Pressable } from "react-native";
-import { router, useFocusEffect } from "expo-router";
-import { Station } from "../../types/station";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+
 import StationCard from "../../components/StationCard";
+import { useAppTheme } from "../../context/ThemeContext";
 import { loadFavorites, saveFavorites } from "../../lib/storage";
-import * as Haptics from "expo-haptics";
+import { Station } from "../../types/station";
 
 export default function FavoritesScreen() {
+  const router = useRouter();
+  const { colors } = useAppTheme();
   const [favorites, setFavorites] = useState<Station[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadData = async () => {
-        const data = await loadFavorites();
-        setFavorites(data);
-      };
+  useEffect(() => {
+    const loadData = async () => {
+      const storedFavorites = await loadFavorites();
+      setFavorites(storedFavorites);
+    };
 
-      loadData();
-    }, []),
-  );
+    loadData();
+  }, []);
 
   const removeFavorite = async (station: Station) => {
-    try {
-      await Haptics.selectionAsync();
+    const updatedFavorites = favorites.filter(
+      (fav) => fav.stationuuid !== station.stationuuid,
+    );
 
-      const updatedFavorites = favorites.filter(
-        (fav) => fav.stationuuid !== station.stationuuid,
-      );
-
-      setFavorites(updatedFavorites);
-      await saveFavorites(updatedFavorites);
-    } catch (err) {
-      console.log("Nepavyko pašalinti iš favorites");
-    }
+    setFavorites(updatedFavorites);
+    await saveFavorites(updatedFavorites);
   };
 
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Mėgstamos stotys</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>
+        Mėgstamos stotys
+      </Text>
 
       {favorites.length === 0 ? (
-        <Text style={styles.text}>Kol kas favoritų nėra.</Text>
+        <Text style={[styles.text, { color: colors.textMuted }]}>
+          Kol kas favoritų nėra.
+        </Text>
       ) : (
         <FlatList
           data={favorites}
@@ -50,6 +48,7 @@ export default function FavoritesScreen() {
           renderItem={({ item }) => (
             <StationCard
               station={item}
+              colors={colors}
               isFavorite={true}
               onPress={() =>
                 router.push({
@@ -76,37 +75,18 @@ export default function FavoritesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
     paddingTop: 60,
     paddingHorizontal: 16,
   },
   title: {
-    color: "#ffffff",
     fontSize: 28,
     fontWeight: "700",
     marginBottom: 16,
   },
   text: {
-    color: "#94a3b8",
     fontSize: 16,
   },
   listContent: {
     paddingBottom: 24,
-  },
-  card: {
-    backgroundColor: "#1e293b",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  stationName: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  stationCountry: {
-    color: "#94a3b8",
-    fontSize: 14,
   },
 });

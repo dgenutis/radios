@@ -1,16 +1,26 @@
 import { Tabs } from "expo-router";
+import { ThemeProvider, useAppTheme } from "../../context/ThemeContext";
 
-export default function TabLayout() {
+function TabsNavigator() {
+  const { colors } = useAppTheme();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textFaint,
         tabBarStyle: {
-          backgroundColor: "#111827",
-          borderTopColor: "#1f2937",
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
-        tabBarActiveTintColor: "#38bdf8",
-        tabBarInactiveTintColor: "#94a3b8",
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "600",
+        },
+        sceneStyle: {
+          backgroundColor: colors.background,
+        },
       }}
     >
       <Tabs.Screen
@@ -38,5 +48,13 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+export default function TabsLayout() {
+  return (
+    <ThemeProvider>
+      <TabsNavigator />
+    </ThemeProvider>
   );
 }

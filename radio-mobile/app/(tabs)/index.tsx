@@ -1,16 +1,11 @@
 import { Picker } from "@react-native-picker/picker";
-import StationCard from "../../components/StationCard";
-import { useLocalSearchParams } from "expo-router";
-import { Station } from "../../types/station";
-import {
-  addStationToRecent,
-  loadFavorites,
-  loadRecentStations,
-  saveFavorites,
-  saveRecentStations,
-} from "../../lib/storage";
-
 import * as Haptics from "expo-haptics";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from "expo-audio";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,13 +16,17 @@ import {
   TextInput,
   View,
 } from "react-native";
+
+import StationCard from "../../components/StationCard";
+import { useAppTheme } from "../../context/ThemeContext";
 import {
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-} from "expo-audio";
-
-
+  addStationToRecent,
+  loadFavorites,
+  loadRecentStations,
+  saveFavorites,
+  saveRecentStations,
+} from "../../lib/storage";
+import { Station } from "../../types/station";
 
 const COUNTRY_OPTIONS = [
   { label: "Lietuva", value: "LT" },
@@ -39,15 +38,22 @@ const COUNTRY_OPTIONS = [
   { label: "Jungtinės Valstijos", value: "US" },
 ];
 
+type ThemeMode = "system" | "light" | "dark";
+
+const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
+  { label: "Sistema", value: "system" },
+  { label: "Šviesi", value: "light" },
+  { label: "Tamsi", value: "dark" },
+];
+
 const RADIO_BROWSER_SERVERS = [
   "https://de1.api.radio-browser.info",
   "https://nl1.api.radio-browser.info",
   "https://fr1.api.radio-browser.info",
 ];
 
-
 async function fetchStationsByCountry(countryCode: string) {
-  let lastError: any = null;
+  let lastError: unknown = null;
 
   for (const server of RADIO_BROWSER_SERVERS) {
     try {
@@ -75,6 +81,8 @@ async function fetchStationsByCountry(countryCode: string) {
 }
 
 export default function HomeScreen() {
+  const { colors, themeMode, setTheme } = useAppTheme();
+
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,12 +90,13 @@ export default function HomeScreen() {
   const [currentStation, setCurrentStation] = useState<Station | null>(null);
   const [favorites, setFavorites] = useState<Station[]>([]);
   const [recentStations, setRecentStations] = useState<Station[]>([]);
+  const [nowPlayingText, setNowPlayingText] = useState("Nėra duomenų");
+  const [selectedCountry, setSelectedCountry] = useState("LT");
+
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
   const isPlaying = status?.playing ?? false;
   const isBuffering = status?.isBuffering ?? false;
-  const [nowPlayingText, setNowPlayingText] = useState("Nėra duomenų");
-  const [selectedCountry, setSelectedCountry] = useState("LT");
 
   const params = useLocalSearchParams<{
     playStationUuid?: string;
@@ -118,7 +127,7 @@ export default function HomeScreen() {
 
         setFavorites(storedFavorites);
         setRecentStations(storedRecent);
-      } catch (err) {
+      } catch {
         setError("Nepavyko užkrauti išsaugotų duomenų");
       }
     };
@@ -169,6 +178,10 @@ export default function HomeScreen() {
 
   const sections = [{ title: "Visos stotys", data: filteredStations }];
 
+  const handleThemeChange = async (value: ThemeMode) => {
+    await setTheme(value);
+  };
+
   const handleSelectStation = async (station: Station) => {
     const sameStation = currentStation?.stationuuid === station.stationuuid;
 
@@ -194,8 +207,9 @@ export default function HomeScreen() {
 
   useEffect(() => {
     const autoPlayFromParams = async () => {
-      if (!params.playStationUuid || !params.playUrl || !params.playName)
+      if (!params.playStationUuid || !params.playUrl || !params.playName) {
         return;
+      }
 
       const stationFromParams: Station = {
         stationuuid: String(params.playStationUuid),
@@ -213,12 +227,14 @@ export default function HomeScreen() {
         setCurrentStation(stationFromParams);
         setNowPlayingText("Nėra duomenų");
         player.replace({ uri: stationFromParams.url_resolved });
+
         player.setActiveForLockScreen(true, {
           title: stationFromParams.name,
           artist: stationFromParams.country || "Radio station",
           albumTitle: "Radio",
           artworkUrl: stationFromParams.favicon || undefined,
         });
+
         player.play();
 
         const updatedRecent = addStationToRecent(
@@ -260,7 +276,7 @@ export default function HomeScreen() {
       } else {
         player.pause();
       }
-    } catch (err) {
+    } catch {
       setError("Nepavyko paleisti audio srauto");
     }
   };
@@ -273,10 +289,11 @@ export default function HomeScreen() {
       player.clearLockScreenControls();
       setCurrentStation(null);
       setNowPlayingText("Nėra duomenų");
-    } catch (err) {
+    } catch {
       setError("Nepavyko sustabdyti grojimo");
     }
   };
+
   const toggleFavorite = async (station: Station) => {
     try {
       const exists = favorites.some(
@@ -295,29 +312,35 @@ export default function HomeScreen() {
 
       setFavorites(updatedFavorites);
       await saveFavorites(updatedFavorites);
-    } catch (err) {
+    } catch {
       setError("Nepavyko išsaugoti mėgstamų stočių");
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Radio stotys</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Radio stotys</Text>
 
       <TextInput
         value={searchTerm}
         onChangeText={setSearchTerm}
         placeholder="Ieškoti stoties..."
-        placeholderTextColor="#94a3b8"
-        style={styles.searchInput}
+        placeholderTextColor={colors.textFaint}
+        style={[
+          styles.searchInput,
+          {
+            backgroundColor: colors.surface,
+            color: colors.text,
+          },
+        ]}
       />
 
-      <View style={styles.pickerWrapper}>
+      <View style={[styles.pickerWrapper, { backgroundColor: colors.surface }]}>
         <Picker
           selectedValue={selectedCountry}
           onValueChange={(itemValue) => setSelectedCountry(itemValue)}
-          style={styles.picker}
-          dropdownIconColor="#ffffff"
+          style={[styles.picker, { color: colors.text }]}
+          dropdownIconColor={colors.text}
         >
           {COUNTRY_OPTIONS.map((country) => (
             <Picker.Item
@@ -329,14 +352,37 @@ export default function HomeScreen() {
         </Picker>
       </View>
 
+      <View style={[styles.pickerWrapper, { backgroundColor: colors.surface }]}>
+        <Picker
+          selectedValue={themeMode}
+          onValueChange={(itemValue) =>
+            handleThemeChange(itemValue as ThemeMode)
+          }
+          style={[styles.picker, { color: colors.text }]}
+          dropdownIconColor={colors.text}
+        >
+          {THEME_OPTIONS.map((theme) => (
+            <Picker.Item
+              key={theme.value}
+              label={theme.label}
+              value={theme.value}
+            />
+          ))}
+        </Picker>
+      </View>
+
       {loading ? (
         <View style={styles.centerBox}>
-          <ActivityIndicator size="large" color="#38bdf8" />
-          <Text style={styles.infoText}>Kraunamos stotys...</Text>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={[styles.infoText, { color: colors.textMuted }]}>
+            Kraunamos stotys...
+          </Text>
         </View>
       ) : error ? (
         <View style={styles.centerBox}>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={[styles.errorText, { color: colors.danger }]}>
+            {error}
+          </Text>
         </View>
       ) : (
         <SectionList
@@ -344,7 +390,9 @@ export default function HomeScreen() {
           keyExtractor={(item) => item.stationuuid}
           renderSectionHeader={({ section }) =>
             section.data.length > 0 ? (
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
+                {section.title}
+              </Text>
             ) : null
           }
           renderItem={({ item }) => {
@@ -358,6 +406,7 @@ export default function HomeScreen() {
                 station={item}
                 isActive={isActive}
                 isFavorite={isFavorite}
+                colors={colors}
                 onPress={() => handleSelectStation(item)}
                 onLongPress={async () => {
                   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -368,7 +417,9 @@ export default function HomeScreen() {
             );
           }}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>Nieko nerasta</Text>
+            <Text style={[styles.emptyText, { color: colors.textFaint }]}>
+              Nieko nerasta
+            </Text>
           }
           stickySectionHeadersEnabled={false}
           contentContainerStyle={styles.listContent}
@@ -376,27 +427,59 @@ export default function HomeScreen() {
       )}
 
       {currentStation && (
-        <View style={styles.playerBar}>
+        <View
+          style={[
+            styles.playerBar,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+          ]}
+        >
           <View style={styles.playerInfo}>
-            <Text style={styles.playerLabel}>
+            <Text style={[styles.playerLabel, { color: colors.textFaint }]}>
               {isBuffering
                 ? "Kraunama..."
                 : isPlaying
                   ? "Dabar groja"
                   : "Pasirinkta stotis"}
             </Text>
-            <Text style={styles.playerTitle}>{currentStation.name}</Text>
-            <Text style={styles.playerMeta}>{nowPlayingText}</Text>
-            <Text style={styles.playerSubtitle}>{currentStation.country}</Text>
+            <Text style={[styles.playerTitle, { color: colors.text }]}>
+              {currentStation.name}
+            </Text>
+            <Text style={[styles.playerMeta, { color: colors.textMuted }]}>
+              {nowPlayingText}
+            </Text>
+            <Text style={[styles.playerSubtitle, { color: colors.textMuted }]}>
+              {currentStation.country}
+            </Text>
           </View>
 
           <View style={styles.playerActions}>
-            <Pressable style={styles.secondaryButton} onPress={handleStop}>
-              <Text style={styles.secondaryButtonText}>Stop</Text>
+            <Pressable
+              style={[
+                styles.secondaryButton,
+                { backgroundColor: colors.surface },
+              ]}
+              onPress={handleStop}
+            >
+              <Text
+                style={[
+                  styles.secondaryButtonText,
+                  { color: colors.textMuted },
+                ]}
+              >
+                Stop
+              </Text>
             </Pressable>
 
-            <Pressable style={styles.playerButton} onPress={handleTogglePlay}>
-              <Text style={styles.playerButtonText}>
+            <Pressable
+              style={[styles.playerButton, { backgroundColor: colors.accent }]}
+              onPress={handleTogglePlay}
+            >
+              <Text
+                style={[styles.playerButtonText, { color: colors.accentText }]}
+              >
                 {isBuffering ? "..." : isPlaying ? "Pause" : "Play"}
               </Text>
             </Pressable>
@@ -410,19 +493,15 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
     paddingTop: 60,
     paddingHorizontal: 16,
   },
   title: {
-    color: "#ffffff",
     fontSize: 28,
     fontWeight: "700",
     marginBottom: 16,
   },
   searchInput: {
-    backgroundColor: "#1e293b",
-    color: "#ffffff",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -432,9 +511,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 120,
   },
-
   emptyText: {
-    color: "#94a3b8",
     fontSize: 16,
     textAlign: "center",
     marginTop: 24,
@@ -445,12 +522,10 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   infoText: {
-    color: "#cbd5e1",
     fontSize: 16,
     marginTop: 12,
   },
   errorText: {
-    color: "#f87171",
     fontSize: 16,
     textAlign: "center",
   },
@@ -459,48 +534,39 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     bottom: 16,
-    backgroundColor: "#111827",
     borderRadius: 18,
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#1f2937",
   },
   playerInfo: {
     flex: 1,
     paddingRight: 12,
   },
   playerLabel: {
-    color: "#94a3b8",
     fontSize: 12,
     marginBottom: 4,
   },
   playerTitle: {
-    color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 2,
   },
   playerSubtitle: {
-    color: "#cbd5e1",
     fontSize: 14,
   },
   playerButton: {
-    backgroundColor: "#38bdf8",
     paddingHorizontal: 18,
     paddingVertical: 12,
     borderRadius: 12,
   },
   playerButtonText: {
-    color: "#082f49",
     fontSize: 15,
     fontWeight: "700",
   },
-
   sectionTitle: {
-    color: "#cbd5e1",
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 10,
@@ -512,24 +578,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   secondaryButton: {
-    backgroundColor: "#1f2937",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 12,
   },
   secondaryButtonText: {
-    color: "#e5e7eb",
     fontSize: 15,
     fontWeight: "700",
   },
   playerMeta: {
-    color: "#cbd5e1",
     fontSize: 13,
     marginTop: 2,
     marginBottom: 2,
   },
   pickerWrapper: {
-    backgroundColor: "#1e293b",
     borderRadius: 12,
     marginBottom: 16,
     overflow: "hidden",

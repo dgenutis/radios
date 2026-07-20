@@ -1,45 +1,60 @@
-import { useCallback, useState } from "react";
-import { StyleSheet, Text, View, FlatList, Pressable } from "react-native";
-import { router, useFocusEffect } from "expo-router";
-import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+
+import StationCard from "../../components/StationCard";
+import { useAppTheme } from "../../context/ThemeContext";
 import { clearRecentStations, loadRecentStations } from "../../lib/storage";
 import { Station } from "../../types/station";
-import StationCard from "../../components/StationCard";
+
 export default function RecentScreen() {
+  const router = useRouter();
+  const { colors } = useAppTheme();
   const [recentStations, setRecentStations] = useState<Station[]>([]);
 
-  useFocusEffect(
-    useCallback(() => {
-      const loadData = async () => {
-        const data = await loadRecentStations();
-        setRecentStations(data);
-      };
+  useEffect(() => {
+    const loadData = async () => {
+      const storedRecent = await loadRecentStations();
+      setRecentStations(storedRecent);
+    };
 
-      loadData();
-    }, []),
-  );
-
+    loadData();
+  }, []);
 
   const handleClearRecent = async () => {
-    try {
-      await Haptics.selectionAsync();
-      await clearRecentStations();
-      setRecentStations([]);
-    } catch (err) {
-      console.log("Nepavyko išvalyti recent stočių");
-    }
+    await clearRecentStations();
+    setRecentStations([]);
   };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Neseniai klausytos</Text>
-      {recentStations.length > 0 && (
-        <Pressable style={styles.clearButton} onPress={handleClearRecent}>
-          <Text style={styles.clearButtonText}>Clear Recent</Text>
-        </Pressable>
-      )}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.headerRow}>
+        <Text style={[styles.title, { color: colors.text }]}>
+          Paskutinės klausytos
+        </Text>
+
+        {recentStations.length > 0 && (
+          <Pressable
+            onPress={handleClearRecent}
+            style={[
+              styles.clearButton,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.clearButtonText, { color: colors.textMuted }]}>
+              Clear recent
+            </Text>
+          </Pressable>
+        )}
+      </View>
 
       {recentStations.length === 0 ? (
-        <Text style={styles.text}>Kol kas recent stočių nėra.</Text>
+        <Text style={[styles.text, { color: colors.textMuted }]}>
+          Kol kas nėra paskutinių stočių.
+        </Text>
       ) : (
         <FlatList
           data={recentStations}
@@ -48,6 +63,7 @@ export default function RecentScreen() {
           renderItem={({ item }) => (
             <StationCard
               station={item}
+              colors={colors}
               onPress={() =>
                 router.push({
                   pathname: "/",
@@ -72,50 +88,35 @@ export default function RecentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
     paddingTop: 60,
     paddingHorizontal: 16,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 12,
+  },
   title: {
-    color: "#ffffff",
     fontSize: 28,
     fontWeight: "700",
-    marginBottom: 16,
+    flex: 1,
   },
   text: {
-    color: "#94a3b8",
     fontSize: 16,
   },
   listContent: {
     paddingBottom: 24,
   },
-  card: {
-    backgroundColor: "#1e293b",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 12,
-  },
-  stationName: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  stationCountry: {
-    color: "#94a3b8",
-    fontSize: 14,
-  },
   clearButton: {
-    alignSelf: "flex-start",
-    backgroundColor: "#1f2937",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginBottom: 16,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   clearButtonText: {
-    color: "#fca5a5",
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "600",
   },
 });

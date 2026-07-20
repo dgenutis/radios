@@ -2,8 +2,22 @@ import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Station } from "../types/station";
 
+type StationCardColors = {
+  background: string;
+  surface: string;
+  card: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  textFaint: string;
+  accent: string;
+  accentText: string;
+  danger: string;
+};
+
 type StationCardProps = {
   station: Station;
+  colors: StationCardColors;
   isActive?: boolean;
   isFavorite?: boolean;
   onPress: () => void;
@@ -15,6 +29,7 @@ export default function StationCard({
   station,
   isActive = false,
   isFavorite = false,
+  colors,
   onPress,
   onFavoritePress,
   onLongPress,
@@ -24,24 +39,50 @@ export default function StationCard({
   const showImage =
     !!station.favicon && station.favicon.startsWith("http") && !imageError;
 
+  const cardBackgroundColor = isActive ? colors.surface : colors.card;
+  const cardBorderColor = isActive ? colors.accent : colors.border;
+  const favoriteBackgroundColor = isFavorite ? colors.accent : colors.surface;
+  const favoriteTextColor = isFavorite ? colors.accentText : colors.textMuted;
+
   return (
     <Pressable
-      style={[styles.card, isActive && styles.cardActive]}
       onPress={onPress}
       onLongPress={onLongPress}
+      style={({ pressed }) => [
+        styles.card,
+        {
+          backgroundColor: cardBackgroundColor,
+          borderColor: cardBorderColor,
+          opacity: pressed ? 0.92 : 1,
+        },
+      ]}
     >
       <View style={styles.row}>
         <View style={styles.logoWrap}>
           {showImage ? (
             <Image
               source={{ uri: station.favicon }}
-              style={styles.logo}
+              style={[
+                styles.logo,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}
               resizeMode="cover"
               onError={() => setImageError(true)}
             />
           ) : (
-            <View style={styles.logoFallback}>
-              <Text style={styles.logoFallbackText}>
+            <View
+              style={[
+                styles.logoFallback,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.logoFallbackText, { color: colors.accent }]}>
                 {station.name?.charAt(0)?.toUpperCase() || "R"}
               </Text>
             </View>
@@ -49,24 +90,45 @@ export default function StationCard({
         </View>
 
         <View style={styles.info}>
-          <Text numberOfLines={1} style={styles.stationName}>
+          <Text
+            numberOfLines={1}
+            style={[styles.stationName, { color: colors.text }]}
+          >
             {station.name}
           </Text>
 
-          <Text numberOfLines={1} style={styles.stationMeta}>
+          <Text
+            numberOfLines={1}
+            style={[styles.stationMeta, { color: colors.textMuted }]}
+          >
             {station.country || "Unknown country"}
           </Text>
 
           {!!station.tags && (
-            <Text numberOfLines={1} style={styles.stationTags}>
+            <Text
+              numberOfLines={1}
+              style={[styles.stationTags, { color: colors.textFaint }]}
+            >
               {station.tags}
             </Text>
           )}
         </View>
 
         {onFavoritePress && (
-          <Pressable style={styles.favoriteButton} onPress={onFavoritePress}>
-            <Text style={styles.favoriteButtonText}>
+          <Pressable
+            onPress={onFavoritePress}
+            style={({ pressed }) => [
+              styles.favoriteButton,
+              {
+                backgroundColor: favoriteBackgroundColor,
+                borderColor: isFavorite ? colors.accent : colors.border,
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.favoriteButtonText, { color: favoriteTextColor }]}
+            >
               {isFavorite ? "★" : "☆"}
             </Text>
           </Pressable>
@@ -78,16 +140,10 @@ export default function StationCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#1e293b",
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#1f2937",
-  },
-  cardActive: {
-    borderColor: "#38bdf8",
-    backgroundColor: "#172554",
   },
   row: {
     flexDirection: "row",
@@ -100,20 +156,17 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 14,
-    backgroundColor: "#0f172a",
+    borderWidth: 1,
   },
   logoFallback: {
     width: 54,
     height: 54,
     borderRadius: 14,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#334155",
   },
   logoFallbackText: {
-    color: "#38bdf8",
     fontSize: 22,
     fontWeight: "700",
   },
@@ -122,31 +175,27 @@ const styles = StyleSheet.create({
     paddingRight: 10,
   },
   stationName: {
-    color: "#ffffff",
     fontSize: 17,
     fontWeight: "700",
     marginBottom: 4,
   },
   stationMeta: {
-    color: "#cbd5e1",
     fontSize: 14,
     marginBottom: 2,
   },
   stationTags: {
-    color: "#94a3b8",
     fontSize: 12,
   },
   favoriteButton: {
     width: 42,
     height: 42,
     borderRadius: 12,
-    backgroundColor: "#0f172a",
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 10,
+    borderWidth: 1,
   },
   favoriteButtonText: {
-    color: "#fbbf24",
     fontSize: 22,
     fontWeight: "700",
   },
