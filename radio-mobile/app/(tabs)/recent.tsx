@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 
 import StationCard from "../../components/StationCard";
@@ -12,14 +12,16 @@ export default function RecentScreen() {
   const { colors } = useAppTheme();
   const [recentStations, setRecentStations] = useState<Station[]>([]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const storedRecent = await loadRecentStations();
-      setRecentStations(storedRecent);
-    };
-
-    loadData();
+  const loadData = useCallback(async () => {
+    const storedRecent = await loadRecentStations();
+    setRecentStations(storedRecent);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   const handleClearRecent = async () => {
     await clearRecentStations();

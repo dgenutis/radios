@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import StationCard from "../../components/StationCard";
@@ -12,14 +12,16 @@ export default function FavoritesScreen() {
   const { colors } = useAppTheme();
   const [favorites, setFavorites] = useState<Station[]>([]);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const storedFavorites = await loadFavorites();
-      setFavorites(storedFavorites);
-    };
-
-    loadData();
+  const loadData = useCallback(async () => {
+    const storedFavorites = await loadFavorites();
+    setFavorites(storedFavorites);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
 
   const removeFavorite = async (station: Station) => {
     const updatedFavorites = favorites.filter(

@@ -41,12 +41,6 @@ function TabsNavigator() {
           title: "Recent",
         }}
       />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          href: null,
-        }}
-      />
     </Tabs>
   );
 }

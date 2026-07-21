@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
 import * as Haptics from "expo-haptics";
 import {
@@ -6,9 +7,11 @@ import {
   useAudioPlayerStatus,
 } from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Pressable,
   SectionList,
   StyleSheet,
@@ -40,12 +43,6 @@ const COUNTRY_OPTIONS = [
 
 type ThemeMode = "system" | "light" | "dark";
 
-const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
-  { label: "Sistema", value: "system" },
-  { label: "Šviesi", value: "light" },
-  { label: "Tamsi", value: "dark" },
-];
-
 const RADIO_BROWSER_SERVERS = [
   "https://de1.api.radio-browser.info",
   "https://nl1.api.radio-browser.info",
@@ -63,7 +60,7 @@ async function fetchStationsByCountry(countryCode: string) {
           headers: {
             "Content-Type": "application/json",
           },
-        },
+        }
       );
 
       if (!res.ok) {
@@ -81,7 +78,7 @@ async function fetchStationsByCountry(countryCode: string) {
 }
 
 export default function HomeScreen() {
-  const { colors, themeMode, setTheme } = useAppTheme();
+  const { colors, activeTheme, setTheme } = useAppTheme();
 
   const [stations, setStations] = useState<Station[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +103,20 @@ export default function HomeScreen() {
     playFavicon?: string;
     playTags?: string;
   }>();
+
+  const switchAnim = useRef(
+    new Animated.Value(activeTheme === "dark" ? 0 : 1)
+  ).current;
+  const pressScaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(switchAnim, {
+      toValue: activeTheme === "dark" ? 0 : 1,
+      friction: 7,
+      tension: 120,
+      useNativeDriver: true,
+    }).start();
+  }, [activeTheme, switchAnim]);
 
   useEffect(() => {
     const setupAudio = async () => {
@@ -146,7 +157,7 @@ export default function HomeScreen() {
         const preparedStations = data
           .filter(
             (station: any) =>
-              station.name && station.url_resolved && station.lastcheckok === 1,
+              station.name && station.url_resolved && station.lastcheckok === 1
           )
           .sort((a: any, b: any) => (b.clickcount || 0) - (a.clickcount || 0))
           .slice(0, 50)
@@ -172,37 +183,80 @@ export default function HomeScreen() {
 
   const filteredStations = useMemo(() => {
     return stations.filter((station) =>
-      station.name.toLowerCase().includes(searchTerm.toLowerCase()),
+      station.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [stations, searchTerm]);
 
   const sections = [{ title: "Visos stotys", data: filteredStations }];
 
-  const handleThemeChange = async (value: ThemeMode) => {
-    await setTheme(value);
+  const handleThemeToggle = async () => {
+    const nextTheme: ThemeMode = activeTheme === "dark" ? "light" : "dark";
+
+    Animated.sequence([
+      Animated.timing(pressScaleAnim, {
+        toValue: 0.94,
+        duration: 70,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(pressScaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 220,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await setTheme(nextTheme);
   };
 
+  const playStationStream = useCallback(
+    async (station: Station, autoplay = true) => {
+      try {
+        setError("");
+        setNowPlayingText("Jungiama stotis...");
+
+        await player.pause();
+        player.clearLockScreenControls();
+
+        if (!station.url_resolved || !station.url_resolved.startsWith("http")) {
+          throw new Error("Neteisingas stoties adresas");
+        }
+
+        player.replace({ uri: station.url_resolved });
+
+        player.setActiveForLockScreen(true, {
+          title: station.name,
+          artist: station.country || "Radio station",
+          albumTitle: "Radio",
+          artworkUrl: station.favicon || undefined,
+        });
+
+        setCurrentStation(station);
+
+        if (autoplay) {
+          await player.play();
+        }
+
+        setNowPlayingText("Nėra duomenų");
+
+        setRecentStations((prev) => {
+          const updated = addStationToRecent(prev, station);
+          saveRecentStations(updated).catch(() => {});
+          return updated;
+        });
+      } catch {
+        setError("Nepavyko paleisti pasirinktos stoties");
+        setNowPlayingText("Nepavyko prisijungti");
+      }
+    },
+    [player],
+  );
+
   const handleSelectStation = async (station: Station) => {
-    const sameStation = currentStation?.stationuuid === station.stationuuid;
-
-    if (!sameStation) {
-      setCurrentStation(station);
-      setNowPlayingText("Nėra duomenų");
-      player.replace({ uri: station.url_resolved });
-
-      player.setActiveForLockScreen(true, {
-        title: station.name,
-        artist: station.country || "Radio station",
-        albumTitle: "Radio",
-        artworkUrl: station.favicon || undefined,
-      });
-
-      const updatedRecent = addStationToRecent(recentStations, station);
-      setRecentStations(updatedRecent);
-      await saveRecentStations(updatedRecent);
-    } else {
-      setCurrentStation(station);
-    }
+    await Haptics.selectionAsync();
+    await playStationStream(station, true);
   };
 
   useEffect(() => {
@@ -224,27 +278,13 @@ export default function HomeScreen() {
         currentStation?.stationuuid === stationFromParams.stationuuid;
 
       if (!sameStation) {
-        setCurrentStation(stationFromParams);
-        setNowPlayingText("Nėra duomenų");
-        player.replace({ uri: stationFromParams.url_resolved });
-
-        player.setActiveForLockScreen(true, {
-          title: stationFromParams.name,
-          artist: stationFromParams.country || "Radio station",
-          albumTitle: "Radio",
-          artworkUrl: stationFromParams.favicon || undefined,
-        });
-
-        player.play();
-
-        const updatedRecent = addStationToRecent(
-          recentStations,
-          stationFromParams,
-        );
-        setRecentStations(updatedRecent);
-        await saveRecentStations(updatedRecent);
+        await playStationStream(stationFromParams, true);
       } else if (!isPlaying) {
-        player.play();
+        try {
+          await player.play();
+        } catch {
+          setError("Nepavyko paleisti audio srauto");
+        }
       }
     };
 
@@ -256,6 +296,10 @@ export default function HomeScreen() {
     params.playCountry,
     params.playFavicon,
     params.playTags,
+    currentStation,
+    isPlaying,
+    player,
+    playStationStream,
   ]);
 
   const handleTogglePlay = async () => {
@@ -265,16 +309,9 @@ export default function HomeScreen() {
       await Haptics.selectionAsync();
 
       if (!isPlaying) {
-        player.setActiveForLockScreen(true, {
-          title: currentStation.name,
-          artist: currentStation.country || "Radio station",
-          albumTitle: "Radio",
-          artworkUrl: currentStation.favicon || undefined,
-        });
-
-        player.play();
+        await playStationStream(currentStation, true);
       } else {
-        player.pause();
+        await player.pause();
       }
     } catch {
       setError("Nepavyko paleisti audio srauto");
@@ -285,7 +322,7 @@ export default function HomeScreen() {
     try {
       setError("");
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      player.pause();
+      await player.pause();
       player.clearLockScreenControls();
       setCurrentStation(null);
       setNowPlayingText("Nėra duomenų");
@@ -297,14 +334,14 @@ export default function HomeScreen() {
   const toggleFavorite = async (station: Station) => {
     try {
       const exists = favorites.some(
-        (fav) => fav.stationuuid === station.stationuuid,
+        (fav) => fav.stationuuid === station.stationuuid
       );
 
       let updatedFavorites: Station[];
 
       if (exists) {
         updatedFavorites = favorites.filter(
-          (fav) => fav.stationuuid !== station.stationuuid,
+          (fav) => fav.stationuuid !== station.stationuuid
         );
       } else {
         updatedFavorites = [...favorites, station];
@@ -317,9 +354,80 @@ export default function HomeScreen() {
     }
   };
 
+  const knobTranslateX = switchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [3, 31],
+  });
+
+  const iconRotate = switchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["-35deg", "35deg"],
+  });
+
+  const iconScale = switchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1.08],
+  });
+
+  const trackOpacity = switchAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.7, 1],
+  });
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Radio stotys</Text>
+      <View style={styles.headerRow}>
+        <Text style={[styles.title, { color: colors.text }]}>Radio stotys</Text>
+
+        <Animated.View
+          style={{
+            transform: [{ scale: pressScaleAnim }],
+          }}
+        >
+          <Pressable
+            onPress={handleThemeToggle}
+            accessibilityRole="button"
+            accessibilityLabel={
+              activeTheme === "dark"
+                ? "Įjungti šviesią temą"
+                : "Įjungti tamsią temą"
+            }
+          >
+            <Animated.View
+              style={[
+                styles.themeSwitch,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                  opacity: trackOpacity,
+                },
+              ]}
+            >
+              <Animated.View
+                style={[
+                  styles.themeKnob,
+                  {
+                    backgroundColor: colors.accent,
+                    transform: [{ translateX: knobTranslateX }],
+                  },
+                ]}
+              >
+                <Animated.View
+                  style={{
+                    transform: [{ rotate: iconRotate }, { scale: iconScale }],
+                  }}
+                >
+                  <Ionicons
+                    name={activeTheme === "dark" ? "moon" : "sunny"}
+                    size={16}
+                    color={colors.accentText}
+                  />
+                </Animated.View>
+              </Animated.View>
+            </Animated.View>
+          </Pressable>
+        </Animated.View>
+      </View>
 
       <TextInput
         value={searchTerm}
@@ -352,25 +460,6 @@ export default function HomeScreen() {
         </Picker>
       </View>
 
-      <View style={[styles.pickerWrapper, { backgroundColor: colors.surface }]}>
-        <Picker
-          selectedValue={themeMode}
-          onValueChange={(itemValue) =>
-            handleThemeChange(itemValue as ThemeMode)
-          }
-          style={[styles.picker, { color: colors.text }]}
-          dropdownIconColor={colors.text}
-        >
-          {THEME_OPTIONS.map((theme) => (
-            <Picker.Item
-              key={theme.value}
-              label={theme.label}
-              value={theme.value}
-            />
-          ))}
-        </Picker>
-      </View>
-
       {loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={colors.accent} />
@@ -398,7 +487,7 @@ export default function HomeScreen() {
           renderItem={({ item }) => {
             const isActive = currentStation?.stationuuid === item.stationuuid;
             const isFavorite = favorites.some(
-              (fav) => fav.stationuuid === item.stationuuid,
+              (fav) => fav.stationuuid === item.stationuuid
             );
 
             return (
@@ -496,10 +585,38 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingHorizontal: 16,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 12,
+  },
   title: {
     fontSize: 28,
     fontWeight: "700",
-    marginBottom: 16,
+    flex: 1,
+  },
+  themeSwitch: {
+    width: 60,
+    height: 34,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+    position: "relative",
+    paddingHorizontal: 2,
+  },
+  themeKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   searchInput: {
     borderRadius: 12,
