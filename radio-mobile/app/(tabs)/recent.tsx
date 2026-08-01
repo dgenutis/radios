@@ -32,7 +32,7 @@ export default function RecentScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.headerRow}>
         <Text style={[styles.title, { color: colors.text }]}>
-          Paskutinės klausytos
+          Recently played
         </Text>
 
         {recentStations.length > 0 && (
@@ -55,7 +55,7 @@ export default function RecentScreen() {
 
       {recentStations.length === 0 ? (
         <Text style={[styles.text, { color: colors.textMuted }]}>
-          Kol kas nėra paskutinių stočių.
+          No recently played stations yet.
         </Text>
       ) : (
         <FlatList

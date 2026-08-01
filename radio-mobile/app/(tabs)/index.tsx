@@ -6,7 +6,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from "expo-audio";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -32,13 +32,13 @@ import {
 import { Station } from "../../types/station";
 
 const COUNTRY_OPTIONS = [
-  { label: "Lietuva", value: "LT" },
-  { label: "Latvija", value: "LV" },
-  { label: "Estija", value: "EE" },
-  { label: "Lenkija", value: "PL" },
-  { label: "Vokietija", value: "DE" },
-  { label: "Jungtinė Karalystė", value: "GB" },
-  { label: "Jungtinės Valstijos", value: "US" },
+  { label: "Lithuania", value: "LT" },
+  { label: "Latvia", value: "LV" },
+  { label: "Estonia", value: "EE" },
+  { label: "Poland", value: "PL" },
+  { label: "Germany", value: "DE" },
+  { label: "United Kingdom", value: "GB" },
+  { label: "United States", value: "US" },
 ];
 
 type ThemeMode = "system" | "light" | "dark";
@@ -55,16 +55,16 @@ async function fetchStationsByCountry(countryCode: string) {
   for (const server of RADIO_BROWSER_SERVERS) {
     try {
       const res = await fetch(
-        `${server}/json/stations/bycountrycodeexact/${countryCode}?hidebroken=true&limit=30`,
+        `${server}/json/stations/bycountrycodeexact/${countryCode}?hidebroken=true&limit=100`,
         {
           headers: {
             "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       if (!res.ok) {
-        throw new Error(`Serveris ${server} grąžino ${res.status}`);
+        throw new Error(`Server ${server} returned ${res.status}`);
       }
 
       const data = await res.json();
@@ -74,7 +74,7 @@ async function fetchStationsByCountry(countryCode: string) {
     }
   }
 
-  throw lastError || new Error("Nepavyko gauti stočių iš Radio Browser");
+  throw lastError || new Error("Failed to fetch stations from Radio Browser");
 }
 
 export default function HomeScreen() {
@@ -87,7 +87,7 @@ export default function HomeScreen() {
   const [currentStation, setCurrentStation] = useState<Station | null>(null);
   const [favorites, setFavorites] = useState<Station[]>([]);
   const [recentStations, setRecentStations] = useState<Station[]>([]);
-  const [nowPlayingText, setNowPlayingText] = useState("Nėra duomenų");
+  const [nowPlayingText, setNowPlayingText] = useState("No data");
   const [selectedCountry, setSelectedCountry] = useState("LT");
 
   const player = useAudioPlayer(null);
@@ -104,8 +104,10 @@ export default function HomeScreen() {
     playTags?: string;
   }>();
 
+  const processedParamUuidRef = useRef<string | null>(null);
+
   const switchAnim = useRef(
-    new Animated.Value(activeTheme === "dark" ? 0 : 1)
+    new Animated.Value(activeTheme === "dark" ? 0 : 1),
   ).current;
   const pressScaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -139,7 +141,7 @@ export default function HomeScreen() {
         setFavorites(storedFavorites);
         setRecentStations(storedRecent);
       } catch {
-        setError("Nepavyko užkrauti išsaugotų duomenų");
+        setError("Failed to load saved data");
       }
     };
 
@@ -157,10 +159,10 @@ export default function HomeScreen() {
         const preparedStations = data
           .filter(
             (station: any) =>
-              station.name && station.url_resolved && station.lastcheckok === 1
+              station.name && station.url_resolved && station.lastcheckok === 1,
           )
           .sort((a: any, b: any) => (b.clickcount || 0) - (a.clickcount || 0))
-          .slice(0, 50)
+          .slice(0, 100)
           .map((station: any) => ({
             stationuuid: station.stationuuid,
             name: station.name.trim(),
@@ -172,7 +174,7 @@ export default function HomeScreen() {
 
         setStations(preparedStations);
       } catch (err: any) {
-        setError(err.message || "Įvyko klaida kraunant stotis");
+        setError(err.message || "An error occurred while loading stations");
       } finally {
         setLoading(false);
       }
@@ -183,11 +185,11 @@ export default function HomeScreen() {
 
   const filteredStations = useMemo(() => {
     return stations.filter((station) =>
-      station.name.toLowerCase().includes(searchTerm.toLowerCase())
+      station.name.toLowerCase().includes(searchTerm.toLowerCase()),
     );
   }, [stations, searchTerm]);
 
-  const sections = [{ title: "Visos stotys", data: filteredStations }];
+  const sections = [{ title: "All stations", data: filteredStations }];
 
   const handleThemeToggle = async () => {
     const nextTheme: ThemeMode = activeTheme === "dark" ? "light" : "dark";
@@ -215,13 +217,13 @@ export default function HomeScreen() {
     async (station: Station, autoplay = true) => {
       try {
         setError("");
-        setNowPlayingText("Jungiama stotis...");
+        setNowPlayingText("Connecting to station...");
 
         await player.pause();
         player.clearLockScreenControls();
 
         if (!station.url_resolved || !station.url_resolved.startsWith("http")) {
-          throw new Error("Neteisingas stoties adresas");
+          throw new Error("Invalid station URL");
         }
 
         player.replace({ uri: station.url_resolved });
@@ -239,7 +241,7 @@ export default function HomeScreen() {
           await player.play();
         }
 
-        setNowPlayingText("Nėra duomenų");
+        setNowPlayingText("No data");
 
         setRecentStations((prev) => {
           const updated = addStationToRecent(prev, station);
@@ -247,14 +249,15 @@ export default function HomeScreen() {
           return updated;
         });
       } catch {
-        setError("Nepavyko paleisti pasirinktos stoties");
-        setNowPlayingText("Nepavyko prisijungti");
+        setError("Failed to play the selected station");
+        setNowPlayingText("Connection failed");
       }
     },
     [player],
   );
 
   const handleSelectStation = async (station: Station) => {
+    processedParamUuidRef.current = station.stationuuid;
     await Haptics.selectionAsync();
     await playStationStream(station, true);
   };
@@ -265,6 +268,12 @@ export default function HomeScreen() {
         return;
       }
 
+      if (processedParamUuidRef.current === params.playStationUuid) {
+        return;
+      }
+
+      processedParamUuidRef.current = params.playStationUuid;
+
       const stationFromParams: Station = {
         stationuuid: String(params.playStationUuid),
         name: String(params.playName),
@@ -274,18 +283,16 @@ export default function HomeScreen() {
         tags: params.playTags ? String(params.playTags) : "",
       };
 
-      const sameStation =
-        currentStation?.stationuuid === stationFromParams.stationuuid;
+      await playStationStream(stationFromParams, true);
 
-      if (!sameStation) {
-        await playStationStream(stationFromParams, true);
-      } else if (!isPlaying) {
-        try {
-          await player.play();
-        } catch {
-          setError("Nepavyko paleisti audio srauto");
-        }
-      }
+      router.setParams({
+        playStationUuid: undefined,
+        playName: undefined,
+        playUrl: undefined,
+        playCountry: undefined,
+        playFavicon: undefined,
+        playTags: undefined,
+      });
     };
 
     autoPlayFromParams();
@@ -296,9 +303,6 @@ export default function HomeScreen() {
     params.playCountry,
     params.playFavicon,
     params.playTags,
-    currentStation,
-    isPlaying,
-    player,
     playStationStream,
   ]);
 
@@ -314,7 +318,7 @@ export default function HomeScreen() {
         await player.pause();
       }
     } catch {
-      setError("Nepavyko paleisti audio srauto");
+      setError("Failed to play audio stream");
     }
   };
 
@@ -325,23 +329,23 @@ export default function HomeScreen() {
       await player.pause();
       player.clearLockScreenControls();
       setCurrentStation(null);
-      setNowPlayingText("Nėra duomenų");
+      setNowPlayingText("No data");
     } catch {
-      setError("Nepavyko sustabdyti grojimo");
+      setError("Failed to stop playback");
     }
   };
 
   const toggleFavorite = async (station: Station) => {
     try {
       const exists = favorites.some(
-        (fav) => fav.stationuuid === station.stationuuid
+        (fav) => fav.stationuuid === station.stationuuid,
       );
 
       let updatedFavorites: Station[];
 
       if (exists) {
         updatedFavorites = favorites.filter(
-          (fav) => fav.stationuuid !== station.stationuuid
+          (fav) => fav.stationuuid !== station.stationuuid,
         );
       } else {
         updatedFavorites = [...favorites, station];
@@ -350,7 +354,7 @@ export default function HomeScreen() {
       setFavorites(updatedFavorites);
       await saveFavorites(updatedFavorites);
     } catch {
-      setError("Nepavyko išsaugoti mėgstamų stočių");
+      setError("Failed to save favorite stations");
     }
   };
 
@@ -377,7 +381,9 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: colors.text }]}>Radio stotys</Text>
+        <Text style={[styles.title, { color: colors.text }]}>
+          Radio stations
+        </Text>
 
         <Animated.View
           style={{
@@ -389,8 +395,8 @@ export default function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={
               activeTheme === "dark"
-                ? "Įjungti šviesią temą"
-                : "Įjungti tamsią temą"
+                ? "Switch to light theme"
+                : "Switch to dark theme"
             }
           >
             <Animated.View
@@ -432,7 +438,7 @@ export default function HomeScreen() {
       <TextInput
         value={searchTerm}
         onChangeText={setSearchTerm}
-        placeholder="Ieškoti stoties..."
+        placeholder="Search stations..."
         placeholderTextColor={colors.textFaint}
         style={[
           styles.searchInput,
@@ -464,7 +470,7 @@ export default function HomeScreen() {
         <View style={styles.centerBox}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={[styles.infoText, { color: colors.textMuted }]}>
-            Kraunamos stotys...
+            Loading stations...
           </Text>
         </View>
       ) : error ? (
@@ -487,7 +493,7 @@ export default function HomeScreen() {
           renderItem={({ item }) => {
             const isActive = currentStation?.stationuuid === item.stationuuid;
             const isFavorite = favorites.some(
-              (fav) => fav.stationuuid === item.stationuuid
+              (fav) => fav.stationuuid === item.stationuuid,
             );
 
             return (
@@ -507,7 +513,7 @@ export default function HomeScreen() {
           }}
           ListEmptyComponent={
             <Text style={[styles.emptyText, { color: colors.textFaint }]}>
-              Nieko nerasta
+              No results found
             </Text>
           }
           stickySectionHeadersEnabled={false}
@@ -528,10 +534,10 @@ export default function HomeScreen() {
           <View style={styles.playerInfo}>
             <Text style={[styles.playerLabel, { color: colors.textFaint }]}>
               {isBuffering
-                ? "Kraunama..."
+                ? "Loading..."
                 : isPlaying
-                  ? "Dabar groja"
-                  : "Pasirinkta stotis"}
+                  ? "Now playing"
+                  : "Selected station"}
             </Text>
             <Text style={[styles.playerTitle, { color: colors.text }]}>
               {currentStation.name}

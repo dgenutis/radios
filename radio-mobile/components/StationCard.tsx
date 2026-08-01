@@ -48,6 +48,8 @@ export default function StationCard({
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${station.name}`}
       style={({ pressed }) => [
         styles.card,
         {
@@ -117,6 +119,13 @@ export default function StationCard({
         {onFavoritePress && (
           <Pressable
             onPress={onFavoritePress}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isFavorite
+                ? `Remove ${station.name} from favorites`
+                : `Add ${station.name} to favorites`
+            }
+            accessibilityState={{ selected: isFavorite }}
             style={({ pressed }) => [
               styles.favoriteButton,
               {

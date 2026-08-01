@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "radio-mobile",
+    "name": "Radio Mobile",
     "slug": "radio-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -49,7 +49,15 @@
           "enableBackgroundPlayback": true
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

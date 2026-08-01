@@ -35,12 +35,12 @@ export default function FavoritesScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.title, { color: colors.text }]}>
-        Mėgstamos stotys
+        Favorite stations
       </Text>
 
       {favorites.length === 0 ? (
         <Text style={[styles.text, { color: colors.textMuted }]}>
-          Kol kas favoritų nėra.
+          No favorite stations yet.
         </Text>
       ) : (
         <FlatList
